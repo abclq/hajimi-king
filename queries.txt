@@ -1,0 +1,40 @@
+# --- 核心默认指令 ---
+AIzaSy in:file
+AIzaSy extension:log
+AIzaSy filename:.env
+# --- 您的自定义指令 ---
+"sk-" in:file filename:.env
+AIzaSy in:file filename:config.json
+AIzaSy in:file extension:json
+AIzaSy in:file extension:yaml
+AIzaSy in:file extension:js
+AIzaSy in:file extension:py
+AIzaSy in:file extension:go
+AIzaSy in:file language:javascript
+AIzaSy in:file language:python
+AIzaSy in:file language:go
+AIzaSy in:file path:config/
+AIzaSy in:file path:settings/
+AIzaSy in:file path:src/config/
+AIzaSy in:file path:src/settings/
+"sk-" in:file
+"sk-" in:file filename:config.json
+"sk-" in:file extension:json
+"sk-" in:file extension:yaml
+"sk-" in:file extension:js
+"sk-" in:file extension:py
+"sk-" in:file extension:go
+"sk-" in:file language:javascript
+"sk-" in:file language:python
+"sk-" in:file language:go
+"sk-" in:file path:config/
+"sk-" in:file path:settings/
+"sk-" in:file path:src/config/
+"sk-" in:file path:src/settings/
+"sk-" in:file extension:json language:python
+"sk-" in:file path:config/ extension:json
+AIzaSy user:google in:file
+"api_key" in:file filename:config
+"API_KEY" in:file filename:secrets
+"google_api_key" in:file
+"openai.api_key" in:file
