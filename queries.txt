@@ -1,40 +1,71 @@
-# --- 核心默认指令 ---
+# ====================================================================
+# hajimi-king 搜索查询文件
+# 核心目标: 查找以 "AIzaSy" 开头的 Google API 密钥
+# ====================================================================
+
+# --- 1. 基础与高价值文件名 ---
+# 最广泛的搜索
 AIzaSy in:file
-AIzaSy extension:log
-AIzaSy filename:.env
-# --- 您的自定义指令 ---
-"sk-" in:file filename:.env
-AIzaSy in:file filename:config.json
-AIzaSy in:file extension:json
-AIzaSy in:file extension:yaml
-AIzaSy in:file extension:js
-AIzaSy in:file extension:py
-AIzaSy in:file extension:go
-AIzaSy in:file language:javascript
-AIzaSy in:file language:python
-AIzaSy in:file language:go
-AIzaSy in:file path:config/
-AIzaSy in:file path:settings/
-AIzaSy in:file path:src/config/
-AIzaSy in:file path:src/settings/
-"sk-" in:file
-"sk-" in:file filename:config.json
-"sk-" in:file extension:json
-"sk-" in:file extension:yaml
-"sk-" in:file extension:js
-"sk-" in:file extension:py
-"sk-" in:file extension:go
-"sk-" in:file language:javascript
-"sk-" in:file language:python
-"sk-" in:file language:go
-"sk-" in:file path:config/
-"sk-" in:file path:settings/
-"sk-" in:file path:src/config/
-"sk-" in:file path:src/settings/
-"sk-" in:file extension:json language:python
-"sk-" in:file path:config/ extension:json
-AIzaSy user:google in:file
-"api_key" in:file filename:config
-"API_KEY" in:file filename:secrets
-"google_api_key" in:file
-"openai.api_key" in:file
+# 在.env文件中查找，排除所有示例文件，这是最高价值的查询之一
+AIzaSy filename:.env NOT example
+# 查找Google Cloud服务账号密钥文件
+AIzaSy filename:serviceAccountKey.json
+# 查找常见的凭证和配置文件
+AIzaSy filename:credentials.json
+AIzaSy filename:secrets.yml
+AIzaSy filename:config.json
+AIzaSy filename:settings.py
+AIzaSy filename:application.yml
+AIzaSy filename:docker-compose.yml API_KEY
+
+
+# --- 2. 按代码语言和上下文 (精准硬编码查找) ---
+# 在不同语言的特定代码模式中查找
+AIzaSy language:javascript "googleApiKey"
+AIzaSy language:typescript "googleMapsApiKey"
+AIzaSy language:python "GOOGLE_API_KEY"
+AIzaSy language:go "googleAPIKey"
+AIzaSy language:java "private static final String API_KEY"
+AIzaSy language:php "define('GOOGLE_API_KEY'"
+AIzaSy language:ruby "GOOGLE_MAPS_API_KEY"
+# 查找iOS应用中的硬编码密钥 (极高精度)
+AIzaSy "GMSServices.provideAPIKey"
+# 查找安卓应用中的硬编码密钥
+AIzaSy extension:xml "string name=\"google_maps_key\""
+
+
+# --- 3. 按特定框架 (针对现代Web框架) ---
+# 查找React/Next.js项目中的环境变量
+AIzaSy "REACT_APP_GOOGLE_MAPS_API_KEY"
+AIzaSy "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"
+# 查找Vue.js项目中的环境变量
+AIzaSy "VUE_APP_GOOGLE_MAPS_API_KEY"
+# 查找Svelte项目中的环境变量
+AIzaSy "VITE_GOOGLE_MAPS_API_KEY"
+
+
+# --- 4. 按API使用场景 (高可信度组合) ---
+# 结合Google Maps API的URL，表明密钥正在被使用
+AIzaSy "maps.googleapis.com/maps/api/js?key="
+# 结合Firebase配置对象
+AIzaSy "firebaseConfig"
+# 结合API请求头
+AIzaSy "x-goog-api-key"
+# 结合YouTube API
+AIzaSy "youtube.googleapis.com"
+# 结合Google Cloud Storage
+AIzaSy "storage.googleapis.com"
+
+
+# --- 5. 按文件扩展名和路径 (扩大搜索范围) ---
+# 在各类配置文件中查找
+AIzaSy extension:json "apiKey"
+AIzaSy extension:yml "google_api_key"
+AIzaSy extension:properties "google.api.key"
+# 在shell脚本中查找导出的环境变量
+AIzaSy extension:sh "export GOOGLE_API_KEY"
+# 在生产环境或部署相关的路径中查找
+AIzaSy path:prod
+AIzaSy path:deploy "key"
+AIzaSy path:environments "api_key"
+
