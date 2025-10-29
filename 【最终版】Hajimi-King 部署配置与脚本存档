@@ -1,0 +1,130 @@
+======================================================================
+           Hajimi-King 部署配置与脚本最终存档 (2025-10-29)
+======================================================================
+
+### 1. Docker 核心启动文件 (`docker-compose.yml`)
+# 文件路径: ~/hajimi-king/docker-compose.yml
+
+version: "3.8"
+services:
+  hajimi-king:
+    image: ghcr.io/gakkinoone/hajimi-king:latest
+    container_name: hajimi-king
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./queries.txt:/app/data/queries.txt
+    command: >
+      sh -c "python app/hajimi_king.py & 
+             while true; do 
+               sleep 300; 
+               curl -fsS --retry 3 <你的 Healthchecks.io 心跳URL>; 
+             done"
+
+----------------------------------------------------------------------
+
+### 2. 环境变量与密钥文件 (`.env.example`)
+# 文件路径: ~/hajimi-king/.env
+# 注意：保存时请隐去真实密钥！
+
+# 必填：你的 GitHub Tokens，用逗号隔开
+GITHUB_TOKENS=ghp_xxxxxxxxxxxxxxxxx,ghp_yyyyyyyyyyyyyyyyy,ghp_zzzzzzzzzzzzzzzzz
+
+# 代理 (可选)
+PROXY=
+
+# 验证模型
+HAJIMI_CHECK_MODEL=gemini-1.5-flash
+
+----------------------------------------------------------------------
+
+### 3. 搜索规则文件 (`queries.txt`)
+# 文件路径: ~/hajimi-king/queries.txt
+
+# ====================================================================
+# hajimi-king 搜索查询文件
+# ====================================================================
+AIzaSy in:file
+AIzaSy filename:.env NOT example
+AIzaSy filename:serviceAccountKey.json
+AIzaSy filename:credentials.json
+AIzaSy filename:secrets.yml
+AIzaSy language:javascript "googleApiKey"
+AIzaSy language:python "GOOGLE_API_KEY"
+AIzaSy "GMSServices.provideAPIKey"
+AIzaSy extension:xml "string name=\"google_maps_key\""
+AIzaSy "REACT_APP_GOOGLE_MAPS_API_KEY"
+AIzaSy "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"
+AIzaSy "VUE_APP_GOOGLE_MAPS_API_KEY"
+AIzaSy "VITE_GOOGLE_MAPS_API_KEY"
+AIzaSy "maps.googleapis.com/maps/api/js?key="
+AIzaSy "firebaseConfig"
+AIzaSy "x-goog-api-key"
+AIzaSy "youtube.googleapis.com"
+AIzaSy extension:sh "export GOOGLE_API_KEY"
+
+----------------------------------------------------------------------
+
+### 4. 每日简报脚本 (`hajimi_report.sh`)
+# 文件路径: ~/hajimi_report.sh
+
+#!/bin/bash
+# --- 配置信息 ---
+BOT_TOKEN="<你的Telegram机器人Token>"
+CHAT_ID="<你的Telegram Chat ID>"
+KEY_FILE_PATH="/home/ubuntu/hajimi-king/data/keys/keys_valid_$(date +%Y%m%d).txt"
+# --- 配置结束 ---
+if [ ! -f "$KEY_FILE_PATH" ]; then KEY_COUNT=0; else KEY_COUNT=$(grep -c . "$KEY_FILE_PATH"); fi
+VPS_NAME=$(hostname)
+MESSAGE="*Hajimi-King 每日报告*\n-------------------------\n*服务器:* \`$VPS_NAME\`\n*报告时间:* \`$(date '+%Y-%m-%d %H:%M:%S')\`\n*今日已发现有效 Key:* \`$KEY_COUNT\` *个*"
+curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+    -d "chat_id=$CHAT_ID" \
+    -d "text=$MESSAGE" \
+    -d "parse_mode=Markdown"
+
+----------------------------------------------------------------------
+
+### 5. 自动化体检报告脚本 (`hajimi_health_check_tg.sh`)
+# 文件路径: ~/hajimi_health_check_tg.sh
+
+#!/bin/bash
+# --- TG 配置 ---
+BOT_TOKEN="<你的Telegram机器人Token>"
+CHAT_ID="<你的Telegram Chat ID>"
+# --- 配置结束 ---
+cd ~/hajimi-king || exit
+MESSAGE="<b>Hajimi-King 定时健康检查</b>"$'\n'"---------------------------------"
+MESSAGE+=$'\n\n'"<b>1. 核心服务 (容器)</b>"
+if sudo docker ps | grep -q "hajimi-king.* Up "; then MESSAGE+=$'\n'"✅ <b>容器状态:</b> 正在健康运行"; else MESSAGE+=$'\n'"❌ <b>容器状态:</b> 未在运行或已退出！"; fi
+if sudo docker-compose logs | grep -q "GitHub tokens: 4 configured"; then MESSAGE+=$'\n'"✅ <b>Tokens 配置:</b> 成功加载 4 个 Tokens"; else MESSAGE+=$'\n'"❌ <b>Tokens 配置:</b> 未能正确加载 Tokens！"; fi
+if sudo docker-compose logs | grep -q "Loaded 18 search queries"; then MESSAGE+=$'\n'"✅ <b>搜索规则:</b> 成功加载 18 条高级规则"; else MESSAGE+=$'\n'"❌ <b>搜索规则:</b> 未能加载高级规则！"; fi
+MESSAGE+=$'\n\n'"<b>2. 心跳监控 (Healthchecks.io)</b>"
+if grep -q "hc-ping.com" docker-compose.yml; then MESSAGE+=$'\n'"✅ <b>发送配置:</b> 心跳命令已正确配置"; else MESSAGE+=$'\n'"❌ <b>发送配置:</b> 未找到心跳命令！"; fi
+MESSAGE+=$'\n'"ℹ️ <b>接收状态:</b> (请登录网站查看)"
+MESSAGE+=$'\n\n'"<b>3. 每日报告 (TG 脚本)</b>"
+if [ -f ~/hajimi_report.sh ] && [ -x ~/hajimi_report.sh ]; then MESSAGE+=$'\n'"✅ <b>报告脚本:</b> 文件存在且可执行"; else MESSAGE+=$'\n'"❌ <b>报告脚本:</b> 脚本文件不存在！"; fi
+if crontab -l 2>/dev/null | grep -q "hajimi_report.sh"; then MESSAGE+=$'\n'"✅ <b>定时任务:</b> 每日报告的“闹钟”已设置"; else MESSAGE+=$'\n'"❌ <b>定时任务:</b> 未找到每日报告的定时任务！"; fi
+MESSAGE+=$'\n\n'"<b>4. 成果数据 (结果文件)</b>"
+KEY_FILE=$(ls data/keys/keys_valid_*.txt 2>/dev/null | head -n 1)
+if [ -n "$KEY_FILE" ]; then KEY_COUNT=$(grep -c . "$KEY_FILE"); MESSAGE+=$'\n'"✅ <b>当前战果:</b> 已找到 <code>$KEY_COUNT</code> 个有效 Key"; else MESSAGE+=$'\n'"ℹ️ <b>当前战果:</b> 尚未找到有效 Key"; fi
+MESSAGE+=$'\n'"---------------------------------"
+MESSAGE+=$'\n'"<i>检查时间: $(date '+%Y-%m-%d %H:%M:%S')</i>"
+curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+    --data-urlencode "chat_id=$CHAT_ID" \
+    --data-urlencode "text=$MESSAGE" \
+    --data-urlencode "parse_mode=HTML"
+
+----------------------------------------------------------------------
+
+### 6. 定时任务 (`crontab`)
+# 查看命令: crontab -l
+# 编辑命令: crontab -e
+
+# 每天早上9点，发送每日简报
+0 9 * * * /home/ubuntu/hajimi_report.sh >/dev/null 2>&1
+
+# 每3小时，发送一次完整的健康检查报告
+0 */3 * * * /home/ubuntu/hajimi_health_check_tg.sh >/dev/null 2>&1
+
