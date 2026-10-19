@@ -9,6 +9,16 @@ from common.Logger import logger
 from common.config import Config
 
 
+def _mask_token(token: Optional[str]) -> str:
+    """Return a non-sensitive token label for logs."""
+    if not token:
+        return "none"
+    token = str(token).strip()
+    if len(token) <= 8:
+        return "***"
+    return f"{token[:4]}...{token[-4:]}"
+
+
 class GitHubClient:
     GITHUB_API_URL = "https://api.github.com/search/code"
 
@@ -61,15 +71,12 @@ class GitHubClient:
                 try:
                     total_requests += 1
                     # 获取随机proxy配置
-                    proxies = Config.get_random_proxy()
-                    if proxies:
-                        response = requests.get(self.GITHUB_API_URL, headers=headers, params=params, timeout=30, proxies=proxies)
-                    else:
-                        response = requests.get(self.GITHUB_API_URL, headers=headers, params=params, timeout=30)
+                    proxies = Config.get_random_proxy() if Config.USE_SCRIPT_PROXY else None
+                    response = requests.get(self.GITHUB_API_URL, headers=headers, params=params, timeout=30, proxies=proxies)
                     rate_limit_remaining = response.headers.get('X-RateLimit-Remaining')
                     # 只在剩余次数很少时警告
                     if rate_limit_remaining and int(rate_limit_remaining) < 3:
-                        logger.warning(f"⚠️ Rate limit low: {rate_limit_remaining} remaining, token: {current_token}")
+                        logger.warning(f"⚠️ Rate limit low: {rate_limit_remaining} remaining, token: {_mask_token(current_token)}")
                     response.raise_for_status()
                     page_result = response.json()
                     page_success = True
@@ -171,13 +178,10 @@ class GitHubClient:
 
         try:
             # 获取proxy配置
-            proxies = Config.get_random_proxy()
+            proxies = Config.get_random_proxy() if Config.USE_SCRIPT_PROXY else None
 
             logger.info(f"🔍 Processing file: {metadata_url}")
-            if proxies:
-                metadata_response = requests.get(metadata_url, headers=headers, proxies=proxies)
-            else:
-                metadata_response = requests.get(metadata_url, headers=headers)
+            metadata_response = requests.get(metadata_url, headers=headers, proxies=proxies, timeout=30)
 
             metadata_response.raise_for_status()
             file_metadata = metadata_response.json()
@@ -200,10 +204,7 @@ class GitHubClient:
                 logger.warning(f"⚠️ No download URL found for file: {metadata_url}")
                 return None
 
-            if proxies:
-                content_response = requests.get(download_url, headers=headers, proxies=proxies)
-            else:
-                content_response = requests.get(download_url, headers=headers)
+            content_response = requests.get(download_url, headers=headers, proxies=proxies, timeout=30)
             logger.info(f"⏳ checking for keys from:  {download_url},status: {content_response.status_code}")
             content_response.raise_for_status()
             return content_response.text

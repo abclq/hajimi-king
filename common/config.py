@@ -17,6 +17,7 @@ class Config:
     GITHUB_TOKENS = [token.strip() for token in GITHUB_TOKENS_STR.split(',') if token.strip()]
     DATA_PATH = os.getenv('DATA_PATH', '/app/data')
     PROXY_LIST_STR = os.getenv("PROXY", "")
+    USE_SCRIPT_PROXY = os.getenv("USE_SCRIPT_PROXY", "false").strip().lower() in ("true", "1", "yes", "on", "enabled")
     
     # 解析代理列表，支持格式：http://user:pass@host:port,http://host:port,socks5://user:pass@host:port
     PROXY_LIST = []
@@ -48,6 +49,26 @@ class Config:
     
     # 日期范围过滤器配置 (单位：天)
     DATE_RANGE_DAYS = int(os.getenv("DATE_RANGE_DAYS", "730"))  # 默认730天 (约2年)
+
+    # 并发控制
+    FILE_PROCESS_WORKERS = int(os.getenv("FILE_PROCESS_WORKERS", "8"))   # 并发处理 GitHub 文件数
+    VALIDATE_WORKERS = int(os.getenv("VALIDATE_WORKERS", "5"))           # 单 provider 并发验证数
+
+    # 日志保留天数
+    LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "2"))
+
+    # Cohere 无效 key 条数上限（regex 太宽，无效 key 极多）
+    COHERE_MAX_INVALID_KEYS = int(os.getenv("COHERE_MAX_INVALID_KEYS", "5000"))
+
+    # 限速参数（秒）
+    VALIDATE_JITTER_MIN = float(os.getenv("VALIDATE_JITTER_MIN", "0.05"))
+    VALIDATE_JITTER_MAX = float(os.getenv("VALIDATE_JITTER_MAX", "0.15"))
+    FILE_SLEEP_MIN = float(os.getenv("FILE_SLEEP_MIN", "0.1"))
+    FILE_SLEEP_MAX = float(os.getenv("FILE_SLEEP_MAX", "0.3"))
+    QUERY_SLEEP_MIN = float(os.getenv("QUERY_SLEEP_MIN", "0.5"))
+    QUERY_SLEEP_MAX = float(os.getenv("QUERY_SLEEP_MAX", "1.5"))
+    LOOP_SLEEP = float(os.getenv("LOOP_SLEEP", "3.0"))
+
 
     # 查询文件路径配置
     QUERIES_FILE = os.getenv("QUERIES_FILE", "queries.txt")
@@ -93,7 +114,7 @@ class Config:
         Returns:
             Optional[Dict[str, str]]: requests格式的proxies字典，如果未配置则返回None
         """
-        if not cls.PROXY_LIST:
+        if not cls.USE_SCRIPT_PROXY or not cls.PROXY_LIST:
             return None
         
         # 随机选择一个代理
@@ -158,6 +179,13 @@ logger.info(f"*" * 30 + " CONFIG START " + "*" * 30)
 logger.info(f"GITHUB_TOKENS: {len(Config.GITHUB_TOKENS)} tokens")
 logger.info(f"DATA_PATH: {Config.DATA_PATH}")
 logger.info(f"PROXY_LIST: {len(Config.PROXY_LIST)} proxies configured")
+logger.info(f"USE_SCRIPT_PROXY: {Config.USE_SCRIPT_PROXY}")
+logger.info(f"FILE_PROCESS_WORKERS: {Config.FILE_PROCESS_WORKERS}")
+logger.info(f"VALIDATE_WORKERS: {Config.VALIDATE_WORKERS}")
+logger.info(f"VALIDATE_JITTER: {Config.VALIDATE_JITTER_MIN}-{Config.VALIDATE_JITTER_MAX}s")
+logger.info(f"FILE_SLEEP: {Config.FILE_SLEEP_MIN}-{Config.FILE_SLEEP_MAX}s")
+logger.info(f"QUERY_SLEEP: {Config.QUERY_SLEEP_MIN}-{Config.QUERY_SLEEP_MAX}s")
+logger.info(f"LOOP_SLEEP: {Config.LOOP_SLEEP}s")
 logger.info(f"GEMINI_BALANCER_URL: {Config.GEMINI_BALANCER_URL or 'Not configured'}")
 logger.info(f"GEMINI_BALANCER_AUTH: {'Configured' if Config.GEMINI_BALANCER_AUTH else 'Not configured'}")
 logger.info(f"GEMINI_BALANCER_SYNC_ENABLED: {Config.parse_bool(Config.GEMINI_BALANCER_SYNC_ENABLED)}")

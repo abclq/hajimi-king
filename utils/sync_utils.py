@@ -34,6 +34,7 @@ class SyncUtils:
         # 创建线程池用于异步执行
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="SyncUtils")
         self.saving_checkpoint = False
+        self.checkpoint_lock = threading.RLock()
 
         # 周期性发送控制
         self.batch_interval = 60
@@ -58,7 +59,7 @@ class SyncUtils:
         # 启动周期性发送线程
         self._start_batch_sender()
 
-    def add_keys_to_queue(self, keys: List[str]):
+    def add_keys_to_queue(self, keys: List[str], provider: str = None):
         """
         将keys同时添加到balancer和GPT load的发送队列
         
@@ -68,37 +69,32 @@ class SyncUtils:
         if not keys:
             return
 
-        # Acquire lock for checkpoint saving
-        while self.saving_checkpoint:
-            logger.info(f"📥 Checkpoint is currently being saved, waiting before adding {len(keys)} key(s) to queues...")
-            time.sleep(0.5)  # Small delay to prevent busy-waiting
+        with self.checkpoint_lock:
+            self.saving_checkpoint = True
+            try:
+                # Gemini Balancer
+                if self.balancer_enabled:
+                    initial_balancer_count = len(checkpoint.wait_send_balancer)
+                    checkpoint.wait_send_balancer.update(keys)
+                    new_balancer_count = len(checkpoint.wait_send_balancer)
+                    added_balancer_count = new_balancer_count - initial_balancer_count
+                    logger.info(f"📥 Added {added_balancer_count} key(s) to gemini balancer queue (total: {new_balancer_count})")
+                else:
+                    logger.info(f"🚫 Gemini Balancer disabled, skipping {len(keys)} key(s) for gemini balancer queue")
 
-        self.saving_checkpoint = True  # Acquire the lock
-        try:
+                # GPT Load Balancer
+                if self.gpt_load_enabled:
+                    initial_gpt_count = len(checkpoint.wait_send_gpt_load)
+                    checkpoint.wait_send_gpt_load.update(keys)
+                    new_gpt_count = len(checkpoint.wait_send_gpt_load)
+                    added_gpt_count = new_gpt_count - initial_gpt_count
+                    logger.info(f"📥 Added {added_gpt_count} key(s) to GPT load balancer queue (total: {new_gpt_count})")
+                else:
+                    logger.info(f"🚫 GPT Load Balancer disabled, skipping {len(keys)} key(s) for GPT load balancer queue")
 
-            # Gemini Balancer
-            if self.balancer_enabled:
-                initial_balancer_count = len(checkpoint.wait_send_balancer)
-                checkpoint.wait_send_balancer.update(keys)
-                new_balancer_count = len(checkpoint.wait_send_balancer)
-                added_balancer_count = new_balancer_count - initial_balancer_count
-                logger.info(f"📥 Added {added_balancer_count} key(s) to gemini balancer queue (total: {new_balancer_count})")
-            else:
-                logger.info(f"🚫 Gemini Balancer disabled, skipping {len(keys)} key(s) for gemini balancer queue")
-
-            # GPT Load Balancer
-            if self.gpt_load_enabled:
-                initial_gpt_count = len(checkpoint.wait_send_gpt_load)
-                checkpoint.wait_send_gpt_load.update(keys)
-                new_gpt_count = len(checkpoint.wait_send_gpt_load)
-                added_gpt_count = new_gpt_count - initial_gpt_count
-                logger.info(f"📥 Added {added_gpt_count} key(s) to GPT load balancer queue (total: {new_gpt_count})")
-            else:
-                logger.info(f"🚫 GPT Load Balancer disabled, skipping {len(keys)} key(s) for GPT load balancer queue")
-
-            file_manager.save_checkpoint(checkpoint)
-        finally:
-            self.saving_checkpoint = False  # Release the lock
+                file_manager.save_checkpoint(checkpoint)
+            finally:
+                self.saving_checkpoint = False
 
     def _send_balancer_worker(self, keys: List[str]) -> str:
         """
@@ -425,49 +421,46 @@ class SyncUtils:
 
     def _batch_send_worker(self) -> None:
         """批量发送worker"""
-        while self.saving_checkpoint:
-            logger.info(f"📥 Checkpoint is currently being saving, waiting before batch sending...")
-            time.sleep(0.5)
+        with self.checkpoint_lock:
+            self.saving_checkpoint = True
+            try:
+                # 加载checkpoint
+                logger.info(f"📥 Starting batch sending, wait_send_balancer length: {len(checkpoint.wait_send_balancer)}, wait_send_gpt_load length: {len(checkpoint.wait_send_gpt_load)}")
+                # 发送gemini balancer队列
+                if checkpoint.wait_send_balancer and self.balancer_enabled:
+                    balancer_keys = list(checkpoint.wait_send_balancer)
+                    logger.info(f"🔄 Processing {len(balancer_keys)} key(s) from gemini balancer queue")
 
-        self.saving_checkpoint = True
-        try:
-            # 加载checkpoint
-            logger.info(f"📥 Starting batch sending, wait_send_balancer length: {len(checkpoint.wait_send_balancer)}, wait_send_gpt_load length: {len(checkpoint.wait_send_gpt_load)}")
-            # 发送gemini balancer队列
-            if checkpoint.wait_send_balancer and self.balancer_enabled:
-                balancer_keys = list(checkpoint.wait_send_balancer)
-                logger.info(f"🔄 Processing {len(balancer_keys)} key(s) from gemini balancer queue")
+                    result_code = self._send_balancer_worker(balancer_keys)
+                    if result_code == 'ok':
+                        # 清空队列
+                        checkpoint.wait_send_balancer.clear()
+                        logger.info(f"✅ Gemini balancer queue processed successfully, cleared {len(balancer_keys)} key(s)")
+                    else:
+                        logger.error(f"❌ Gemini balancer queue processing failed with code: {result_code}")
 
-                result_code = self._send_balancer_worker(balancer_keys)
-                if result_code == 'ok':
-                    # 清空队列
-                    checkpoint.wait_send_balancer.clear()
-                    logger.info(f"✅ Gemini balancer queue processed successfully, cleared {len(balancer_keys)} key(s)")
-                else:
-                    logger.error(f"❌ Gemini balancer queue processing failed with code: {result_code}")
+                # 发送gpt_load队列
+                if checkpoint.wait_send_gpt_load and self.gpt_load_enabled:
+                    gpt_load_keys = list(checkpoint.wait_send_gpt_load)
+                    logger.info(f"🔄 Processing {len(gpt_load_keys)} key(s) from GPT load balancer queue")
 
-            # 发送gpt_load队列
-            if checkpoint.wait_send_gpt_load and self.gpt_load_enabled:
-                gpt_load_keys = list(checkpoint.wait_send_gpt_load)
-                logger.info(f"🔄 Processing {len(gpt_load_keys)} key(s) from GPT load balancer queue")
+                    result_code = self._send_gpt_load_worker(gpt_load_keys)
 
-                result_code = self._send_gpt_load_worker(gpt_load_keys)
+                    if result_code == 'ok':
+                        # 清空队列
+                        checkpoint.wait_send_gpt_load.clear()
+                        logger.info(f"✅ GPT load balancer queue processed successfully, cleared {len(gpt_load_keys)} key(s)")
+                    else:
+                        logger.error(f"❌ GPT load balancer queue processing failed with code: {result_code}")
 
-                if result_code == 'ok':
-                    # 清空队列
-                    checkpoint.wait_send_gpt_load.clear()
-                    logger.info(f"✅ GPT load balancer queue processed successfully, cleared {len(gpt_load_keys)} key(s)")
-                else:
-                    logger.error(f"❌ GPT load balancer queue processing failed with code: {result_code}")
-
-            # 保存checkpoint
-            file_manager.save_checkpoint(checkpoint)
-        except Exception as e:
-            stacktrace = traceback.format_exc()
-            logger.error(f"❌ Batch send worker error: {e}\n{stacktrace}")
-            logger.error(f"❌ Batch send worker error: {e}")
-        finally:
-            self.saving_checkpoint = False  # Release the lock
+                # 保存checkpoint
+                file_manager.save_checkpoint(checkpoint)
+            except Exception as e:
+                stacktrace = traceback.format_exc()
+                logger.error(f"❌ Batch send worker error: {e}\n{stacktrace}")
+                logger.error(f"❌ Batch send worker error: {e}")
+            finally:
+                self.saving_checkpoint = False
 
     def shutdown(self) -> None:
         """关闭线程池和定时器"""

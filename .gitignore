@@ -83,3 +83,15 @@ results/
 *.bak
 *.backup
 *.orig
+# 带后缀的备份变体（*.bak 匹配不到这些）
+*.bak[0-9]
+*.bak_*
+*.bak-*
+*.backup.*
+
+# API keys / 验证数据（绝不可提交）
+keys.txt
+cleaned_keys*.json
+verify_input*.json
+verify_results/
+queries.txt.backup*
